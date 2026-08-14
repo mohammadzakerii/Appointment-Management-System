@@ -56,8 +56,6 @@ class WorkingHour(models.Model):
     doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE, related_name="workinghour")
     days_of_week = models.PositiveSmallIntegerField(choices=DAYS_OF_WEEK, verbose_name="_Days of week")
 
-    class Meta:
-        constraints = [models.UniqueConstraint(fields= ["doctor", "days_of_week"], name="unique working hour per day")]
 
     def __str__(self):
         return f" {self.doctor.user.fullname} - start_work_time{self.start_work_time} - day of week {self.get_days_of_week_display()}"

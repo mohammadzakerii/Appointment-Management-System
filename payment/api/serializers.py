@@ -12,7 +12,7 @@ class PayDownPaymentSerializer(serializers.Serializer):
         appointment = self.context["appointment"]
 
         if appointment.payment.is_paid:
-            raise serializers.ValidationError("down payment has already is paid")
+            raise serializers.ValidationError("down payment has already been paid")
         return attrs
      
     def save(self, **kwargs):
@@ -80,6 +80,9 @@ class VerifyPaymentResponseSerializer(serializers.Serializer):
     card_num = serializers.CharField()
 
 class PaymentSerializer(serializers.ModelSerializer):
+    name_of_doctor = serializers.CharField(source = "appointment.doctor.user.fullname", read_only=True)
+    name_of_patient = serializers.CharField(source = "appointment.patient.user.fullname", read_only=True)
+
     class Meta:
         model = Payment
         fields = "__all__"

@@ -4,33 +4,90 @@ from account.models import Doctor
 from datetime import timezone 
 import datetime
 from django.shortcuts import get_object_or_404
-from appointment.utils import slot_generator
+from appointment.api.utils import slot_generator
 from django.db import transaction
 from decimal import Decimal
 
 class ServiceSerializer(serializers.ModelSerializer):
     name_of_doctor = serializers.CharField(source = "doctor.user.fullname", read_only=True)
     doctor_specialization =serializers.CharField(source="doctor.specialization", read_only = True)
+
     class Meta:
         model = Service
-        fields = "__all__"
-        read_only_fields = ["name_of_doctor"]
+        fields = ["name", "price", "slot_duration", "name_of_doctor", "doctor_specialization", "doctor"]
+        read_only_fields = ["name_of_doctor" ]
+        extra_kwargs = {
+            "doctor": {"required": False}
+        }
 
+    def validate(self, attrs):
+           request = self.context["request"]
+           if request.user.role == "doctor" and "doctor" in attrs:
+               raise serializers.ValidationError("doctor cant set doctor field")
+           return attrs
+                
 class WorkingHourSerializer(serializers.ModelSerializer):
     name_of_doctor = serializers.CharField(source = "doctor.user.fullname", read_only=True)
 
     class Meta:
         model = WorkingHour
-        fields = "__all__"
-      
+        fields =["start_work_time", "end_work_time", "doctor","days_of_week", "name_of_doctor"]
+        read_only_fields = ["name_of_doctor"]
+        extra_kwargs = {
+            "doctor":{"required": False}
+        }  
+
+    def validate(self, attrs):
+        request = self.context["request"]
+
+        if request.user.role == "doctor":
+
+            if "doctor" in attrs:
+                raise serializers.ValidationError({
+                    "doctor": "Doctor cannot specify doctor field."
+                })
+
+            
+            attrs["doctor"] = request.user.doctor   
+
+        elif request.user.role == "admin":
+
+            if not attrs.get("doctor"):
+                raise serializers.ValidationError({
+                    "doctor": "Admin must specify doctor."
+                })
+
+        else:
+            raise serializers.ValidationError("you dont have permission")     
+
+        if WorkingHour.objects.filter(doctor = attrs["doctor"], days_of_week = attrs["days_of_week"]).exists():
+            raise serializers.ValidationError("a working hour in this day of week has been set before")       
+
+        return attrs    
+
+class workinghourDetailSerializer(serializers.ModelSerializer):
+    name_of_doctor = serializers.CharField(source = "doctor.user.fullname", read_only=True)
+    
+    class Meta:
+        model = WorkingHour
+        fields =["start_work_time", "end_work_time", "doctor","days_of_week", "name_of_doctor"]
+        read_only_fields = ["name_of_doctor"]
+        extra_kwargs = {
+        "doctor":{"required": False}
+        }
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        if "days_of_week" in attrs:
+            if WorkingHour.objects.filter(days_of_week=attrs["days_of_week"], doctor=request.user.doctor).exclude(pk=self.instance.pk).exists():
+                raise serializers.ValidationError("you have another working hour on this day of week")
+
+        return attrs    
 
 
-    def validate(self,attrs):
-        if WorkingHour.objects.filter(doctor = attrs.get("doctor"), days_of_week = attrs.get("days_of_week")).exists():
-            raise serializers.ValidationError("a working hour in this day of week has been set before")
-        return attrs
+         
 
-class AppointmentValidatANDCreateSerializer(serializers.Serializer):
+class CreateAppointmentSerializer(serializers.Serializer):
     date = serializers.DateField()
     start_time = serializers.TimeField()
 
@@ -138,11 +195,13 @@ class GetAvailableSlotsSerializer(serializers.Serializer):
         available_slots =[slot for slot in generated_slots if slot not in booked_slots] 
         return {
             "slots":available_slots,
+            "doctor_name":doctor.user.fullname,
             "day_name":workinghour.get_days_of_week_display()
         }
 
 class AvailableSlotResponseSerializer(serializers.Serializer):
     date = serializers.DateField()
+    doctor_name= serializers.CharField()
     day_name = serializers.CharField()
     slots = serializers.ListField(child= serializers.TimeField())
 

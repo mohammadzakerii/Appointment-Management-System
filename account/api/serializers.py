@@ -75,9 +75,11 @@ class UserSerializer(serializers.ModelSerializer):
 
     #to check if passwords are not the same           
     def validate(self, attrs):
-
-        if attrs["password"] != attrs["password2"]:
-            raise serializers.ValidationError("passwords are not the same")
+        password = attrs.get("password")
+        password2 = attrs.get("password2")
+        if password or password2:
+            if attrs["password"] != attrs["password2"]:
+                raise serializers.ValidationError("passwords are not the same")
         
         return attrs    
     
@@ -108,7 +110,7 @@ class UserSerializer(serializers.ModelSerializer):
                 instance.set_password(password)
                 instance.save()
 
-            return instance
+        return instance
     
 
 
@@ -206,16 +208,13 @@ class CheckOtpSerializer(serializers.Serializer):
         if len(value) != 4 :
             raise serializers.ValidationError("code should contains 4 number characters")
         
-        #characters of code should be numeric
-        if not value.isdigit():
-            raise serializers.ValidationError("value ahould only contains numbers")
         
         return value
     
     def validate(self, attrs):
         token = self.context["token"]
         code = attrs["code"]
-        print(token)
+       
 
         try:
             otp = Otp.objects.get(token= token)
@@ -223,7 +222,7 @@ class CheckOtpSerializer(serializers.Serializer):
         except Otp.DoesNotExist:
             raise serializers.ValidationError("something went wrong please try again")
 
-        #if user enters wrongcode for 5 times otp needs to be requested for again
+        #if user enters wrong code for 5 times otp needs to be requested again
         if otp.attempts >= 5:
             raise serializers.ValidationError("too many attemps request for otp again ")
         
@@ -245,8 +244,6 @@ class CheckOtpSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         otp = self.otp
-        print("otp :" ,repr(otp.phone))
-        print( "identity_code:", repr(otp.identity_code))
 
         #check if user exists if not we create new one 
         try:

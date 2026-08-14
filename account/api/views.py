@@ -5,13 +5,15 @@ from .serializers import UserSerializer, LoginSerializer, LogoutSerialzier, Doct
 from rest_framework_simplejwt.tokens import RefreshToken 
 from account.models import User, Doctor, Patient
 from django.contrib.auth import authenticate, login
-from . import permissions
+import permissions.permissions as permissions
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.authtoken.models import Token
 from rest_framework.exceptions import ValidationError
 from appointment.api.paginations import SmallResultSetPagination
 from rest_framework.filters import SearchFilter
-from appointment.api.permissions import IsAdmin
+from permissions.permissions import IsAdmin,DoctorOrAdminOrUserObject, AdminOrOwnerUser
+from django.shortcuts import get_object_or_404
+
 
 
 # this view registers user and generates jwt access and refresh tokens
@@ -126,7 +128,7 @@ class LogoutAuthTokenView(APIView):
 
 # return list of users
 class Users_list(generics.ListAPIView):
-     queryset = User.objects.all()
+     queryset = User.objects.all().order_by("id")
      serializer_class = UserSerializer
      permission_classes = [IsAuthenticated,IsAdmin]
      pagination_class = SmallResultSetPagination
@@ -137,43 +139,45 @@ class Users_list(generics.ListAPIView):
 class User_detail(generics.RetrieveAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated, IsAdmin] 
+    permission_classes = [IsAuthenticated, DoctorOrAdminOrUserObject] 
     
 
     def get_object(self):
         pk = self.kwargs.get("pk")
-        user = User.objects.get(pk=pk)
+        user = get_object_or_404(User, pk=pk)
+
+
+        self.check_object_permissions(self.request, user)
         return user
     
  
 class UpdateUserView(generics.UpdateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated, permissions.MakechangerReadonly]
+    permission_classes = [IsAuthenticated, AdminOrOwnerUser]
 
  
 class DeleteAccountView(generics.DestroyAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated, permissions.MakechangerReadonly]
+    permission_classes = [IsAuthenticated, permissions.IsOwner]
 
 
 
 class CompleteProfile(generics.UpdateAPIView):
 
-    permission_classes = [IsAuthenticated, permissions.MakechangerReadonly]
+    permission_classes = [IsAuthenticated, permissions.DoctorOrPatientToComplete]
 
     def get_object(self):
-        pk = self.kwargs.get("pk")
         
         if self.request.user.role == "doctor":
             
-            doctor, created = Doctor.objects.get_or_create(user_id = pk)
+            doctor, created = Doctor.objects.get_or_create(user = self.request.user)
             return doctor
 
         elif self.request.user.role == "patient":
 
-            patient, created = Patient.objects.get_or_create(user_id = pk)
+            patient, created = Patient.objects.get_or_create(user_id = self.request.user)
             return patient
 
         else:
@@ -188,14 +192,14 @@ class CompleteProfile(generics.UpdateAPIView):
     
 
 class DoctorsListVIew(generics.ListAPIView):
-    queryset = Doctor.objects.all()
+    queryset = Doctor.objects.all().order_by("id")
     serializer_class = DoctorInfoSerializer
     permission_classes = [AllowAny]
 
 
 
 class PatientListView(generics.ListAPIView):
-    queryset = Patient.objects.all()
+    queryset = Patient.objects.all().order_by("id")
     serializer_class = PatientInfoSerializer
     permission_classes = [IsAuthenticated,IsAdmin]
     pagination_class = SmallResultSetPagination
